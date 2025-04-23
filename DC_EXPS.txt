@@ -1,0 +1,361 @@
+#communication using pipes (EXP3)
+import multiprocessing
+
+def child_process(conn):
+    message = "Hello from child process!"
+    conn.send(message)
+    conn.close()
+
+def parent_process():
+    parent_conn, child_conn = multiprocessing.Pipe()
+
+    process = multiprocessing.Process(target=child_process, args=(child_conn,))
+    process.start()
+
+    child_conn.close()  # Close child end in parent
+
+    # Read message from child process
+    message = parent_conn.recv()
+    print(f"Parent received: {message}")
+
+    parent_conn.close()
+    process.join()
+
+if __name__ == "__main__":
+    parent_process()
+
+OR
+
+import os
+import multiprocessing
+
+def child_process(pipe_write):
+    os.close(pipe_write[0])  # Close unused read end
+    message = "Hello from child process!"
+    os.write(pipe_write[1], message.encode())  # Write message to pipe
+    os.close(pipe_write[1])
+
+def parent_process():
+    pipe_read, pipe_write = os.pipe()  # Create pipe
+
+    # Create child process (pass pipe_write as a tuple, not a list)
+    process = multiprocessing.Process(target=child_process, args=((pipe_read, pipe_write),))
+    process.start()
+
+    os.close(pipe_write)  # Close unused write end
+
+    # Read message from child process
+    message = os.read(pipe_read, 1024).decode()
+    print(f"Parent received: {message}")
+
+    os.close(pipe_read)
+    process.join()
+
+if __name__ == "__main__":
+    parent_process()
+
+
+
+#ring election algorithm (EXP5)
+class Pro:
+    def __init__(self, id):
+        self.id = id
+        self.act = True  # Active status
+
+class GFG:
+    def __init__(self):
+        self.TotalProcess = 0
+        self.process = []
+
+    def initialiseGFG(self):
+        print("No of processes 5")
+        self.TotalProcess = 5
+        self.process = [Pro(i) for i in range(self.TotalProcess)]  # Moved inside the method
+
+    def Election(self):
+        print("Process no " + str(self.process[self.FetchMaximum()].id) + " fails")
+        self.process[self.FetchMaximum()].act = False  # Simulating process failure
+
+        print("Election Initiated by 2")
+        initializedProcess = 2
+        old = initializedProcess
+        newer = (old + 1) % self.TotalProcess
+
+        # Election message passing
+        while True:
+            if self.process[newer].act:
+                print("Process " + str(self.process[old].id) + " pass Election(" +
+                      str(self.process[old].id) + ") to " + str(self.process[newer].id))
+                old = newer
+            newer = (newer + 1) % self.TotalProcess
+            if newer == initializedProcess:
+                break
+
+        # New coordinator
+        coordinator_index = self.FetchMaximum()
+        coord = self.process[coordinator_index].id
+        print("Process " + str(coord) + " becomes coordinator")
+
+        # Coordinator message passing
+        old = coordinator_index
+        newer = (old + 1) % self.TotalProcess
+        while True:
+            if self.process[newer].act:
+                print("Process " + str(self.process[old].id) +
+                      " pass Coordinator(" + str(coord) + ") message to process " +
+                      str(self.process[newer].id))
+                old = newer
+            newer = (newer + 1) % self.TotalProcess
+            if newer == coordinator_index:
+                print("End Of Election")
+                break
+
+    def FetchMaximum(self):
+        maxId = -1
+        ind = 0
+        for i in range(self.TotalProcess):
+            if self.process[i].act and self.process[i].id > maxId:
+                maxId = self.process[i].id
+                ind = i
+        return ind
+
+def main():
+    obj = GFG()
+    obj.initialiseGFG()
+    obj.Election()
+
+if __name__ == "__main__":
+    main()
+
+
+
+#deadlock (EXP7)
+class Process:
+    def __init__(self, pid):
+        self.pid = pid  # Process ID
+        self.waiting_for = []  # List of processes this process is waiting for
+
+    def request_resource(self, resource_holders, initiator):
+        """Initiates a probe if the resource request fails (i.e., must wait)."""
+        if not resource_holders:
+            print(f"Process {self.pid} found no resource holders.")
+            return False  # No resource holders, hence no deadlock
+        
+        for holder in resource_holders:
+            probe = [initiator, self.pid, holder.pid]  # Probe format: [initiator, sender, receiver]
+            print(f"Process {self.pid} sending probe {probe} to Process {holder.pid}")
+            if holder.receive_probe(probe):
+                print(f"Deadlock detected involving Process {initiator}!")
+                return True  # Deadlock found
+        
+        return False  # No deadlock found
+
+    def receive_probe(self, probe):
+        """Handles a received probe message."""
+        initiator, sender, receiver = probe
+        print(f"Process {self.pid} received probe {probe}")
+        
+        if self.pid == initiator:
+            print(f"Cycle detected! Process {self.pid} is in a deadlock.")
+            return True  # Cycle detected
+        
+        if not self.waiting_for:
+            print(f"Process {self.pid} is not waiting for any resource. Ignoring probe.")
+            return False  # No deadlock
+        
+        for next_holder in self.waiting_for:
+            new_probe = [initiator, self.pid, next_holder.pid]
+            print(f"Process {self.pid} forwarding probe {new_probe} to Process {next_holder.pid}")
+            if next_holder.receive_probe(new_probe):
+                return True
+        
+        return False  # No cycle found
+
+# ---------------------------
+# Example Usage
+# ---------------------------
+
+print("--- Deadlock Example ---")
+p1 = Process(1)
+p2 = Process(2)
+p3 = Process(3)
+p4 = Process(4)
+
+# Defining waits-for relationships (Deadlock case)
+p1.waiting_for = [p2]
+p2.waiting_for = [p3]
+p3.waiting_for = [p4]
+p4.waiting_for = [p1]  # Forms a cycle (deadlock)
+
+# Initiate probe from p1
+if p1.request_resource([p2], p1.pid):
+    print("Deadlock confirmed.")
+else:
+    print("No deadlock detected.")
+
+print("\n--- No Deadlock Example ---")
+p5 = Process(5)
+p6 = Process(6)
+p7 = Process(7)
+p8 = Process(8)
+
+# Defining waits-for relationships (No cycle)
+p5.waiting_for = [p6]
+p6.waiting_for = [p7]
+p7.waiting_for = [p8]
+p8.waiting_for = []  # No cycle
+
+# Initiate probe from p5
+if p5.request_resource([p6], p5.pid):
+    print("Deadlock confirmed.")
+else:
+    print("No deadlock detected.")
+
+
+
+
+#lamport's logical clock (EXP4)
+def max1(a, b):
+    # Return the greatest of the two
+    if a > b:
+        return a
+    else:
+        return b
+
+# Function to display the logical timestamp
+def display(e1, e2, p1, p2):
+    print()
+    print("The time stamps of events in P1:")
+    for i in range(0, e1):
+        print(p1[i], end=" ")
+
+    print()
+    print("The time stamps of events in P2:")
+
+    # Print the array p2[]
+    for i in range(0, e2):
+        print(p2[i], end=" ")
+
+# Function to find the timestamp of events
+def lamportLogicalClock(e1, e2, m):
+    p1 = [0] * e1
+    p2 = [0] * e2
+
+    # Initialize p1[] and p2[]
+    for i in range(0, e1):
+        p1[i] = i + 1
+
+    for i in range(0, e2):
+        p2[i] = i + 1
+
+    # Print message dependencies matrix
+    for i in range(0, e2):
+        print(end='\t')
+        print("e2", end="")
+        print(i + 1, end="")
+
+    for i in range(0, e1):
+        print()
+        print("e1", end="")
+        print(i + 1, end="\t")
+
+        for j in range(0, e2):
+            print(m[i][j], end="\t")
+
+    for i in range(0, e1):
+        for j in range(0, e2):
+            # Change the timestamp if the message is sent
+            if m[i][j] == 1:
+                p2[j] = max1(p2[j], p1[i] + 1)
+                for k in range(j + 1, e2):
+                    p2[k] = p2[k - 1] + 1
+
+            # Change the timestamp if the message is received
+            if m[i][j] == -1:
+                p1[i] = max1(p1[i], p2[j] + 1)
+                for k in range(i + 1, e1):
+                    p1[k] = p1[k - 1] + 1
+
+    # Function Call
+    display(e1, e2, p1, p2)
+
+# Driver Code
+if __name__ == "__main__":
+    e1 = 5
+    e2 = 3
+    m = [[0] * 3 for i in range(0, 5)]
+
+    # dep[i][j] = 1, if message is sent
+    # from ei to ej
+    # dep[i][j] = -1, if message is received
+    # by ei from ej
+    # dep[i][j] = 0, otherwise
+    m[0][0] = 0
+    m[0][1] = 0
+    m[0][2] = 0
+    m[1][0] = 0
+    m[1][1] = 0
+    m[1][2] = 1
+    m[2][0] = 0
+    m[2][1] = 0
+    m[2][2] = 0
+    m[3][0] = 0
+    m[3][1] = 0
+    m[3][2] = 0
+    m[4][0] = 0
+    m[4][1] = -1
+    m[4][2] = 0
+
+    # Function Call
+    lamportLogicalClock(e1, e2, m)
+
+
+#client.py
+import socket
+
+# Create a TCP socket
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client_socket.connect(("192.168.0.136", 6666))  # Change to server IP if needed
+
+print("Connected to the server. Type 'exit' to quit.")
+
+while True:
+    message = input("Enter command: ")  # Client types message
+    client_socket.send(message.encode())  # Send message to server
+
+    if message.lower() == "exit":
+        break
+
+    response = client_socket.recv(1024).decode()  # Receive response
+    print(f"Server: {response}")
+
+client_socket.close()  # Close connection
+
+
+
+#server.py
+import socket
+
+# Create a TCP socket
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.bind(('0.0.0.0', 6666))  # Listen on all interfaces, port 6666
+server_socket.listen(5)  # Allow up to 5 connections
+
+print("Server is running... Waiting for connections.")
+
+while True:
+    conn, addr = server_socket.accept()  # Accept a connection
+    print(f"Connected by {addr}")
+
+    while True:
+        data = conn.recv(1024).decode()  # Receive message from client
+        if not data or data.lower() == "exit":  # If client says 'exit', close
+            print("Closing connection.")
+            break
+
+        print(f"Received from client: {data}")
+
+        response = input("Enter response to client: ")  # Server types reply
+        conn.send(response.encode())  # Send reply
+
+    conn.close()  # Close client connection
